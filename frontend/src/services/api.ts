@@ -11,6 +11,8 @@ export type Stats = {
   totalRequests: number;
   hitRate: number;
   missRate: number;
+  validEntries: number;
+  expiredEntries: number;
 };
 
 export type SimulationResult = {
@@ -60,6 +62,9 @@ export type StressResult = {
   durationNanos: number;
   operationsPerSecond: number;
   finalSize: number;
+  cacheGeneration: number;
+  cacheCapacity: number;
+  cachePolicy: "LRU" | "LFU";
   stats: Stats;
 };
 
@@ -73,6 +78,7 @@ export type BenchmarkRequest = {
   ttlSeconds?: number;
   readPercentage: number;
   seed: number;
+  trials?: number;
 };
 
 export type BenchmarkPolicyResult = {
@@ -90,6 +96,11 @@ export type BenchmarkPolicyResult = {
   p50LatencyNanos: number;
   p95LatencyNanos: number;
   p99LatencyNanos: number;
+  minOperationsPerSecond: number;
+  maxOperationsPerSecond: number;
+  minP95LatencyNanos: number;
+  maxP95LatencyNanos: number;
+  trials: Array<{ trial: number; durationNanos: number; operationsPerSecond: number; p50LatencyNanos: number; p95LatencyNanos: number; p99LatencyNanos: number; hits: number; misses: number; evictions: number; expirations: number }>;
 };
 
 export type BenchmarkResult = {
@@ -126,7 +137,7 @@ async function request<T>(path: string, init?: RequestInit, apiRoot = "/api/cach
 
 function validateStats(value: Stats): Stats {
   const numericKeys: Array<keyof Stats> = [
-    "hits", "misses", "evictions", "expirations", "size", "capacity", "totalRequests", "hitRate", "missRate",
+    "hits", "misses", "evictions", "expirations", "size", "capacity", "totalRequests", "hitRate", "missRate", "validEntries", "expiredEntries",
   ];
   if (!value || numericKeys.some((key) => typeof value[key] !== "number")) {
     throw new Error("The backend returned an invalid cache metrics response.");

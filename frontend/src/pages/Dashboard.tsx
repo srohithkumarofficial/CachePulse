@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [section, setSection] = useState<Section>("Overview");
   const [stats, setStats] = useState<Stats | null>(null);
   const [profiles, setProfiles] = useState<WorkloadProfile[]>([]);
+  const [profilesError, setProfilesError] = useState("");
   const [connection, setConnection] = useState<"checking" | "online" | "offline">("checking");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -50,8 +51,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     void refresh();
-    api.workloads().then(setProfiles).catch((requestError: unknown) => {
-      setError(requestError instanceof Error ? requestError.message : "Could not load workload profiles.");
+    api.workloads().then((loaded) => { setProfiles(loaded); setProfilesError(""); }).catch((requestError: unknown) => {
+      setProfilesError(requestError instanceof Error ? requestError.message : "Could not load workload profiles.");
     });
     const timer = window.setInterval(() => void refresh(), 3_000);
     return () => window.clearInterval(timer);
@@ -83,6 +84,19 @@ export default function Dashboard() {
       await perform(() => api.configure(capacity, policy), "Capacity and policy applied. Existing entries were reset.");
       setCapacityDirty(false);
     }
+  }
+
+  async function putConfiguredValue() {
+    if (!key.trim() || !value.trim()) {
+      setError("Cache key and value are required.");
+      return;
+    }
+    const parsedTtl = ttl.trim() === "" ? undefined : Number(ttl);
+    if (parsedTtl !== undefined && (!Number.isInteger(parsedTtl) || parsedTtl < 1 || parsedTtl > 604_800)) {
+      setError("TTL must be a whole number between 1 and 604,800 seconds, or left empty.");
+      return;
+    }
+    await perform(() => api.put(key, value, parsedTtl), "Value stored in the active cache.");
   }
 
   async function readKey() {
@@ -132,7 +146,7 @@ export default function Dashboard() {
       const result = await api.stress(stressThreads, stressOperations);
       setStressDuration(performance.now() - started);
       setStressResult(result);
-      setMessage("Stress run complete. Results are from the active cache.");
+      setMessage(`Stress run complete. Results are from cache generation ${result.cacheGeneration} (${result.cachePolicy}, capacity ${result.cacheCapacity}).`);
       await refresh();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Stress test failed.");
@@ -206,7 +220,7 @@ export default function Dashboard() {
                 </div>
                 <div className="button-row">
                   <button className="button button-primary" disabled={busy || connection !== "online"} onClick={() => void applyConfiguration()}>{busy ? "Applying…" : "Apply configuration"}</button>
-                  <button className="button button-secondary" disabled={busy || connection !== "online" || !key.trim() || !value.trim()} onClick={() => void perform(() => api.put(key, value, ttl ? Number(ttl) : undefined), "Value stored in the active cache.")}>PUT value</button>
+                  <button className="button button-secondary" disabled={busy || connection !== "online" || !key.trim() || !value.trim()} onClick={() => void putConfiguredValue()}>PUT value</button>
                   <button className="button button-secondary" disabled={busy || connection !== "online" || !key.trim()} onClick={() => void readKey()}>GET key</button>
                   <button className="button button-secondary" disabled={busy || connection !== "online" || !key.trim()} onClick={() => void perform(() => api.remove(key), "Remove request completed.")}>Remove key</button>
                   <button className="button button-quiet" disabled={busy || connection !== "online"} onClick={() => void perform(() => api.clear(), "Active cache cleared.")}>Clear cache</button>
@@ -241,7 +255,7 @@ export default function Dashboard() {
                 <div className="section-heading"><div><p className="eyebrow">EXPERIMENT SETUP</p><h2>Healthcare workload lab</h2></div><span className="synthetic-tag">SIMULATED DATA</span></div>
                 <label className="field">Workload profile<select value={workload} onChange={(event) => setWorkload(event.target.value)} disabled={!profiles.length}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
                 {selectedProfile && <div className="profile-description"><p>{selectedProfile.description}</p><ul>{selectedProfile.behavior.map((item) => <li key={item}>{item}</li>)}</ul></div>}
-                {!profiles.length && <p className="helper-text">Workload profiles load from the backend.</p>}
+                {!profiles.length && <p className="helper-text" role={profilesError ? "alert" : undefined}>{profilesError ? `Could not load workload profiles: ${profilesError}` : "Workload profiles load from the backend."}</p>}
                 <div className="form-row lab-number-fields">
                   <label className="field">Cache capacity<input type="number" min="1" max="100000" value={labCapacity} onChange={(event) => setLabCapacity(Number(event.target.value))} /></label>
                   <label className="field">Requests<input type="number" min="1" max="100000" value={labRequests} onChange={(event) => setLabRequests(Number(event.target.value))} /></label>
@@ -273,7 +287,7 @@ export default function Dashboard() {
               <p className="form-footnote">Maximum 1,000,000 total operations per run.</p>
             </section>
             <section className="panel stress-results"><div className="section-heading"><div><p className="eyebrow">RUN RESULTS</p><h2>{stressResult ? "Measured execution" : "Awaiting a run"}</h2></div></div>
-              {stressResult ? <><div className="stress-stat-grid"><div><strong>{stressResult.attempted.toLocaleString()}</strong><span>Attempted</span></div><div><strong>{stressResult.completed.toLocaleString()}</strong><span>Completed</span></div><div><strong>{stressResult.errors.toLocaleString()}</strong><span>Errors</span></div><div><strong>{stressResult.reads.toLocaleString()} / {stressResult.writes.toLocaleString()}</strong><span>Reads / writes</span></div><div><strong>{stressResult.hits.toLocaleString()} / {stressResult.misses.toLocaleString()}</strong><span>Run hits / misses</span></div><div><strong>{stressResult.finalSize.toLocaleString()}</strong><span>Final entries</span></div></div><div className="duration-note"><span>Server throughput <b>{stressResult.operationsPerSecond.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/s</b></span><span>Client duration <b>{((stressDuration ?? 0) / 1000).toFixed(2)} s</b></span></div></> : <div className="stress-empty"><span className="empty-mark" aria-hidden="true">⌁</span><p>Configure the run and start it to see actual operation totals, errors, and final cache state.</p></div>}
+              {stressResult ? <><p className="helper-text">Cache generation {stressResult.cacheGeneration} · {stressResult.cachePolicy} · capacity {stressResult.cacheCapacity}</p><div className="stress-stat-grid"><div><strong>{stressResult.attempted.toLocaleString()}</strong><span>Attempted</span></div><div><strong>{stressResult.completed.toLocaleString()}</strong><span>Completed</span></div><div><strong>{stressResult.errors.toLocaleString()}</strong><span>Errors</span></div><div><strong>{stressResult.reads.toLocaleString()} / {stressResult.writes.toLocaleString()}</strong><span>Reads / writes</span></div><div><strong>{stressResult.hits.toLocaleString()} / {stressResult.misses.toLocaleString()}</strong><span>Run hits / misses</span></div><div><strong>{stressResult.finalSize.toLocaleString()}</strong><span>Final entries</span></div></div><div className="duration-note"><span>Server throughput <b>{stressResult.operationsPerSecond.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/s</b></span><span>Client duration <b>{((stressDuration ?? 0) / 1000).toFixed(2)} s</b></span></div></> : <div className="stress-empty"><span className="empty-mark" aria-hidden="true">⌁</span><p>Configure the run and start it to see actual operation totals, errors, and final cache state.</p></div>}
             </section>
           </div>
         )}

@@ -61,9 +61,9 @@ class BenchmarkServiceTest {
         assertTrue(lru.p50LatencyNanos() > 0);
         assertTrue(lru.p95LatencyNanos() >= lru.p50LatencyNanos());
         assertTrue(lru.p99LatencyNanos() >= lru.p95LatencyNanos());
-        assertEquals(median(lru.trials().stream()
+        assertEquals(medianDouble(lru.trials().stream()
                 .map(trial -> trial.operationsPerSecond()).toList()), lru.operationsPerSecond(), 0.0001);
-        assertEquals(median(lru.trials().stream()
+        assertEquals(medianDouble(lru.trials().stream()
                 .map(trial -> (double) trial.p95LatencyNanos()).toList()), (double) lru.p95LatencyNanos(), 0.0);
         assertEquals(lru.durationNanos(), median(lru.trials().stream()
                 .map(trial -> trial.durationNanos()).toList()));
@@ -101,21 +101,21 @@ class BenchmarkServiceTest {
             assertEquals(64, result.workloadFingerprint().length());
             assertTrue(result.comparisons().get(0).reads() >= 0);
         }
+    }
 
-        private long median(java.util.List<Long> values) {
+    private long median(java.util.List<Long> values) {
             long[] sorted = values.stream().mapToLong(Long::longValue).sorted().toArray();
             int middle = sorted.length / 2;
             return sorted.length % 2 == 1
                     ? sorted[middle]
                     : Math.round(sorted[middle - 1] / 2.0 + sorted[middle] / 2.0);
-        }
+    }
 
-        private double median(java.util.List<Double> values) {
+    private double medianDouble(java.util.List<Double> values) {
             double[] sorted = values.stream().mapToDouble(Double::doubleValue).sorted().toArray();
             int middle = sorted.length / 2;
             return sorted.length % 2 == 1
                     ? sorted[middle]
                     : (sorted[middle - 1] + sorted[middle]) / 2;
-        }
     }
 }

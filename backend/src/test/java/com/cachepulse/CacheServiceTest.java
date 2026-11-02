@@ -3,6 +3,7 @@ package com.cachepulse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.cachepulse.cache.eviction.PolicyType;
 import com.cachepulse.service.CacheService;

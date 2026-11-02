@@ -11,7 +11,9 @@ const WORKLOADS: Array<[BenchmarkWorkload, string]> = [
 ];
 
 function formatLatency(nanos: number) {
-  return nanos >= 1_000_000 ? `${(nanos / 1_000_000).toFixed(2)} ms` : `${(nanos / 1_000).toFixed(1)} µs`;
+  if (nanos >= 1_000_000) return `${(nanos / 1_000_000).toFixed(2)} ms`;
+  if (nanos >= 1_000) return `${(nanos / 1_000).toFixed(2)} µs`;
+  return `${nanos} ns`;
 }
 
 export default function AutomaticBenchmark() {
@@ -21,6 +23,7 @@ export default function AutomaticBenchmark() {
   const [distinctKeys, setDistinctKeys] = useState(2_000);
   const [ttlSeconds, setTtlSeconds] = useState("");
   const [readPercentage, setReadPercentage] = useState(90);
+  const [trials, setTrials] = useState(5);
   const [seed, setSeed] = useState("2026");
   const [result, setResult] = useState<BenchmarkResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,11 +48,13 @@ export default function AutomaticBenchmark() {
       ttlSeconds: ttl,
       readPercentage,
       seed: parsedSeed,
+      trials,
     };
     if (!Number.isInteger(operations) || operations < 1 || operations > 100_000 ||
         !Number.isInteger(capacity) || capacity < 1 || capacity > 100_000 ||
         !Number.isInteger(distinctKeys) || distinctKeys < 1 || distinctKeys > 100_000 ||
-        !Number.isInteger(readPercentage) || readPercentage < 0 || readPercentage > 100) {
+        !Number.isInteger(readPercentage) || readPercentage < 0 || readPercentage > 100 ||
+        !Number.isInteger(trials) || trials < 1 || trials > 20) {
       setError("Use 1–100,000 operations, capacity, and distinct keys, with a read ratio from 0–100%.");
       return;
     }
@@ -98,6 +103,7 @@ export default function AutomaticBenchmark() {
             <label className="field">TTL in seconds <span className="field-note">Optional</span><input type="number" min="1" max="604800" value={ttlSeconds} onChange={(event) => setTtlSeconds(event.target.value)} placeholder="No expiration" /></label>
             <label className="field">Read percentage<input type="number" min="0" max="100" value={readPercentage} onChange={(event) => setReadPercentage(Number(event.target.value))} /><small className="field-help">Read-heavy workloads enforce at least 90% reads.</small></label>
             <label className="field">Random seed<input type="number" step="1" value={seed} onChange={(event) => setSeed(event.target.value)} /><small className="field-help">Same settings and seed reproduce cache outcomes.</small></label>
+            <label className="field">Measured trials<input type="number" min="1" max="20" value={trials} onChange={(event) => setTrials(Number(event.target.value))} /><small className="field-help">One warm-up per policy; 1–20 measured runs.</small></label>
           </div>
           <button className="button button-primary full-button" disabled={busy} onClick={() => void run()}>
             {busy ? <><span className="spinner small" /> Running both policies…</> : "Start benchmark"}
@@ -119,8 +125,11 @@ export default function AutomaticBenchmark() {
                   <div><dt>Writes / evictions</dt><dd>{comparison.writes.toLocaleString()} / {comparison.evictions.toLocaleString()}</dd></div>
                   <div><dt>Expirations</dt><dd>{comparison.expirations.toLocaleString()}</dd></div>
                   <div><dt>Throughput</dt><dd>{comparison.operationsPerSecond.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/s</dd></div>
+                  <div><dt>Execution duration</dt><dd>{formatLatency(comparison.durationNanos)}</dd></div>
                   <div><dt>p50 / p95 latency</dt><dd>{formatLatency(comparison.p50LatencyNanos)} / {formatLatency(comparison.p95LatencyNanos)}</dd></div>
                   <div><dt>p99 latency</dt><dd>{formatLatency(comparison.p99LatencyNanos)}</dd></div>
+                  <div><dt>Trial throughput range</dt><dd>{comparison.minOperationsPerSecond.toLocaleString(undefined, { maximumFractionDigits: 0 })}–{comparison.maxOperationsPerSecond.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/s</dd></div>
+                  <div><dt>p95 latency range</dt><dd>{formatLatency(comparison.minP95LatencyNanos)}–{formatLatency(comparison.maxP95LatencyNanos)}</dd></div>
                 </dl>
               </article>)}
             </div>
