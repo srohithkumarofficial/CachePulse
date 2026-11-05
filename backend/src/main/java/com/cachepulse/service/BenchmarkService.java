@@ -3,6 +3,7 @@ package com.cachepulse.service;
 import com.cachepulse.cache.CacheEngine;
 import com.cachepulse.cache.eviction.PolicyType;
 import com.cachepulse.dto.BenchmarkPolicyResult;
+import com.cachepulse.dto.BenchmarkBaselineResult;
 import com.cachepulse.dto.BenchmarkRequest;
 import com.cachepulse.dto.BenchmarkResult;
 import com.cachepulse.dto.BenchmarkTrialResult;
@@ -23,6 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.TimeUnit;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalCause;
+import com.github.benmanes.caffeine.cache.Ticker;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -62,8 +68,68 @@ public class BenchmarkService {
                 aggregate(PolicyType.LRU, measuredTrials.get(PolicyType.LRU), workload.operations()),
                 aggregate(PolicyType.LFU, measuredTrials.get(PolicyType.LFU), workload.operations()));
         PolicyRecommendation recommendation = insightEngine.recommend(results.get(0), results.get(1));
-        return new BenchmarkResult(configuration, generationNanos, workload.fingerprint(), results, recommendation,
+        BenchmarkBaselineResult caffeine = executeCaffeine(configuration, workload.operations());
+        return new BenchmarkResult(configuration, generationNanos, workload.fingerprint(), results, caffeine, recommendation,
                 "Workload generation is reported separately and excluded from execution duration. Each policy uses a fresh cache and virtual clock and receives the same ordered operations. One warm-up pass per policy precedes the measured trials. Per-operation latency measures only the cache call; execution duration and throughput include the operation loop and virtual-clock advancement. Durations and latencies are in nanoseconds. Policy summaries are medians across the configured trials; trial-level timing variability is also reported. Synthetic cache outcomes are reproducible, but wall-clock measurements vary with runtime and machine load.");
+    }
+
+    private BenchmarkBaselineResult executeCaffeine(BenchmarkRequest request, List<Operation> operations) {
+        AtomicLong virtualNanos = new AtomicLong();
+        AtomicLong capacityEvictions = new AtomicLong();
+        AtomicLong expirationRemovals = new AtomicLong();
+        AtomicLong otherRemovals = new AtomicLong();
+        var builder = Caffeine.newBuilder().maximumSize(request.capacity()).recordStats()
+                .ticker((Ticker) virtualNanos::get)
+                .executor(Runnable::run)
+                .removalListener((String key, String value, RemovalCause cause) -> {
+                    if (cause == RemovalCause.SIZE) capacityEvictions.incrementAndGet();
+                    else if (cause == RemovalCause.EXPIRED) expirationRemovals.incrementAndGet();
+                    else otherRemovals.incrementAndGet();
+                });
+        if (request.ttlSeconds() != null) {
+            builder.expireAfterWrite(request.ttlSeconds(), TimeUnit.SECONDS);
+        }
+        var cache = builder.<String, String>build();
+        // Warm the JIT with the same trace shape, then measure a fresh baseline cache.
+        replayCaffeine(operations, cache, virtualNanos);
+        virtualNanos.set(0);
+        cache = builder.<String, String>build();
+        long[] latencies = new long[operations.size()];
+        long started = System.nanoTime();
+        int reads = 0;
+        for (int index = 0; index < operations.size(); index++) {
+            Operation operation = operations.get(index);
+            long operationStarted = System.nanoTime();
+            if (operation.type() == OperationType.READ) {
+                reads++;
+                cache.getIfPresent(operation.key());
+            } else {
+                cache.put(operation.key(), operation.value());
+            }
+            latencies[index] = Math.max(1, System.nanoTime() - operationStarted);
+            virtualNanos.addAndGet(TimeUnit.MILLISECONDS.toNanos(1));
+        }
+        long duration = Math.max(1, System.nanoTime() - started);
+        Arrays.sort(latencies);
+        // Drain deferred removals after the trace; maintenance does not alter trace outcomes or timing.
+        cache.cleanUp();
+        var stats = cache.stats();
+        return new BenchmarkBaselineResult("Caffeine", "W-TinyLFU admission and eviction (library-managed)",
+                operations.size(), reads, operations.size() - reads, stats.hitCount(), stats.missCount(),
+                reads == 0 ? 0 : (double) stats.hitCount() / reads, capacityEvictions.get(),
+                expirationRemovals.get(), otherRemovals.get(), duration,
+                operations.size() * 1_000_000_000.0 / duration, percentile(latencies, 50),
+                percentile(latencies, 95), percentile(latencies, 99),
+                "One measured replay. Caffeine timings include statistics and synchronous removal-listener instrumentation; LRU/LFU timings use multiple-trial medians. No cleanup runs inside the trace. TTL expiry is checked on reads and maintained periodically by Caffeine, so capacity outcomes with TTL are not semantically identical to the custom cache's lazy expiration.");
+    }
+
+    private void replayCaffeine(List<Operation> operations,
+            com.github.benmanes.caffeine.cache.Cache<String, String> cache, AtomicLong virtualNanos) {
+        for (Operation operation : operations) {
+            if (operation.type() == OperationType.READ) cache.getIfPresent(operation.key());
+            else cache.put(operation.key(), operation.value());
+            virtualNanos.addAndGet(TimeUnit.MILLISECONDS.toNanos(1));
+        }
     }
 
     private BenchmarkRequest withDefaultTrials(BenchmarkRequest request) {

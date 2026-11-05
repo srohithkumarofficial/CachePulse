@@ -108,6 +108,25 @@ export type BenchmarkResult = {
   workloadGenerationNanos: number;
   workloadFingerprint: string;
   comparisons: BenchmarkPolicyResult[];
+  caffeineBaseline: {
+    implementation: string;
+    evictionDescription: string;
+    operations: number;
+    reads: number;
+    writes: number;
+    hits: number;
+    misses: number;
+    hitRate: number;
+    evictions: number;
+    expirationRemovals: number;
+    otherRemovals: number;
+    durationNanos: number;
+    operationsPerSecond: number;
+    p50LatencyNanos: number;
+    p95LatencyNanos: number;
+    p99LatencyNanos: number;
+    metricNote: string;
+  };
   recommendation: {
     recommendedPolicy: "LRU" | "LFU" | null;
     assessment: "CLEAR_ADVANTAGE" | "MODEST_ADVANTAGE" | "SIMILAR" | "INSUFFICIENT";

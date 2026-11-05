@@ -7,6 +7,7 @@ public record BenchmarkResult(
         long workloadGenerationNanos,
         String workloadFingerprint,
         List<BenchmarkPolicyResult> comparisons,
+        BenchmarkBaselineResult caffeineBaseline,
         PolicyRecommendation recommendation,
         String measurementNote) {
 }

@@ -156,6 +156,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .field-help { display: block; margin-top: 4px; color: #8995a4; font-size: 9px; line-height: 1.4; }
 .benchmark-results { min-height: 310px; }
 .benchmark-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.benchmark-comparison-note { grid-column: 1 / -1; padding: 11px 13px; border: 1px solid #e7edf5; border-radius: 9px; background: #f8fafc; color: #66758a; font-size: 10px; line-height: 1.55; }
+.benchmark-comparison-note span { display: block; margin-top: 5px; }
+.policy-mark.caffeine { background: #b78146; }
 .benchmark-policy { min-width: 0; padding: 14px; border: 1px solid #e8edf3; border-radius: 10px; background: #fff; }
 .benchmark-policy .result-rate { margin-top: 15px; }
 .benchmark-metrics { display: grid; gap: 9px; margin: 16px 0 0; }

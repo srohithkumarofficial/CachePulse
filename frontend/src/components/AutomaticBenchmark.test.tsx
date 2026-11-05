@@ -23,6 +23,12 @@ const result: BenchmarkResult = {
     minP95LatencyNanos: 1_000, maxP95LatencyNanos: 1_700,
     trials: [],
   })),
+  caffeineBaseline: {
+    implementation: "Caffeine", evictionDescription: "W-TinyLFU", operations: 10, reads: 9, writes: 1,
+    hits: 4, misses: 5, hitRate: 4 / 9, evictions: 0, expirationRemovals: 0, otherRemovals: 0, durationNanos: 800,
+    operationsPerSecond: 12_000_000, p50LatencyNanos: 200, p95LatencyNanos: 1_100,
+    p99LatencyNanos: 2_000, metricNote: "Caffeine statistics.",
+  },
   recommendation: {
     recommendedPolicy: "LRU", assessment: "MODEST_ADVANTAGE", hitRateDifference: 0.1,
     explanation: "LRU performed well.", tradeoff: "Results vary.", limitation: "Synthetic trace.",
@@ -47,9 +53,9 @@ describe("AutomaticBenchmark", () => {
       method: "POST",
       body: expect.stringContaining('"trials":3'),
     }));
-    expect((screen.getByRole("button", { name: /Running both policies/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Running cache comparison/ }) as HTMLButtonElement).disabled).toBe(true);
     finish(jsonResponse(result));
-    await screen.findByText("LRU vs LFU");
+    await screen.findByText("Cache implementation comparison");
   });
 
   it("renders precise latency units and trial variability", async () => {

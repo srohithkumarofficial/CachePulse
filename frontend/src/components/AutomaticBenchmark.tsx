@@ -79,7 +79,7 @@ export default function AutomaticBenchmark() {
       <section className="panel benchmark-intro">
         <p className="eyebrow">AUTOMATIC EVALUATION</p>
         <h2>Generate a reproducible cache workload</h2>
-        <p>CachePulse creates the operation trace, then runs the same ordered reads and writes against fresh LRU and LFU caches. Workload generation is timed separately.</p>
+        <p>CachePulse creates one operation trace, then replays it against fresh LRU, LFU, and Caffeine caches. Caffeine is an independent W-TinyLFU baseline; its policy is not equivalent to LRU or LFU.</p>
       </section>
 
       {error && <div className="feedback feedback-error" role="alert"><strong>Benchmark could not be completed</strong><span>{error}</span></div>}
@@ -106,15 +106,19 @@ export default function AutomaticBenchmark() {
             <label className="field">Measured trials<input type="number" min="1" max="20" value={trials} onChange={(event) => setTrials(Number(event.target.value))} /><small className="field-help">One warm-up per policy; 1–20 measured runs.</small></label>
           </div>
           <button className="button button-primary full-button" disabled={busy} onClick={() => void run()}>
-            {busy ? <><span className="spinner small" /> Running both policies…</> : "Start benchmark"}
+            {busy ? <><span className="spinner small" /> Running cache comparison…</> : "Start benchmark"}
           </button>
           <p className="form-footnote">Maximum 100,000 operations per policy. A short warm-up pass runs before the measured pass.</p>
         </section>
 
         <section className="panel benchmark-results" aria-live="polite">
-          <div className="section-heading"><div><p className="eyebrow">MEASURED RESULTS</p><h2>{result ? "LRU vs LFU" : "Results will appear here"}</h2></div></div>
+          <div className="section-heading"><div><p className="eyebrow">MEASURED RESULTS</p><h2>{result ? "Cache implementation comparison" : "Results will appear here"}</h2></div></div>
           {!result ? <div className="stress-empty"><span className="empty-mark" aria-hidden="true">↗</span><p>Choose a workload and start a run to see measured cache outcomes, latency, throughput, and the policy advisor.</p></div> : <>
             <div className="benchmark-result-grid">
+              <div className="benchmark-comparison-note">
+                <strong>Outcome metrics:</strong> hit and miss results use the same seeded trace. Capacity evictions and expirations are shown separately; Caffeine's periodic maintenance and the custom cache's lazy expiration can produce different capacity outcomes when TTL is enabled.
+                <span><strong>Timing:</strong> LRU/LFU show medians across the selected trials. Caffeine shows one replay and includes statistics and removal-listener work. These throughput and latency figures are descriptive, not like-for-like performance measurements.</span>
+              </div>
               {result.comparisons.map((comparison) => <article className="benchmark-policy" key={comparison.policy}>
                 <div className="result-heading"><span className={`policy-mark ${comparison.policy.toLowerCase()}`} aria-hidden="true" /><div><span className="eyebrow">MEASURED POLICY</span><h3>{comparison.policy}</h3></div></div>
                 <div className="result-rate">{(comparison.hitRate * 100).toFixed(1)}<small>%</small></div>
@@ -132,6 +136,23 @@ export default function AutomaticBenchmark() {
                   <div><dt>p95 latency range</dt><dd>{formatLatency(comparison.minP95LatencyNanos)}–{formatLatency(comparison.maxP95LatencyNanos)}</dd></div>
                 </dl>
               </article>)}
+              <article className="benchmark-policy caffeine-baseline">
+                <div className="result-heading"><span className="policy-mark caffeine" aria-hidden="true" /><div><span className="eyebrow">LIBRARY BASELINE</span><h3>{result.caffeineBaseline.implementation}</h3></div></div>
+                <p className="section-copy">{result.caffeineBaseline.evictionDescription}</p>
+                <div className="result-rate">{(result.caffeineBaseline.hitRate * 100).toFixed(1)}<small>%</small></div>
+                <div className="result-rate-label">Hit rate across {result.caffeineBaseline.reads.toLocaleString()} reads</div>
+                <div className="bar-track" role="progressbar" aria-label="Caffeine hit rate" aria-valuemin={0} aria-valuemax={100} aria-valuenow={result.caffeineBaseline.hitRate * 100}><span style={{ width: `${Math.min(100, result.caffeineBaseline.hitRate * 100)}%` }} /></div>
+                <dl className="benchmark-metrics">
+                  <div><dt>Hits / misses</dt><dd>{result.caffeineBaseline.hits.toLocaleString()} / {result.caffeineBaseline.misses.toLocaleString()}</dd></div>
+                  <div><dt>Writes / capacity evictions</dt><dd>{result.caffeineBaseline.writes.toLocaleString()} / {result.caffeineBaseline.evictions.toLocaleString()}</dd></div>
+                  <div><dt>Expiration removals</dt><dd>{result.caffeineBaseline.expirationRemovals.toLocaleString()}</dd></div>
+                  <div><dt>Other removal causes</dt><dd>{result.caffeineBaseline.otherRemovals.toLocaleString()}</dd></div>
+                  <div><dt>Throughput</dt><dd>{result.caffeineBaseline.operationsPerSecond.toLocaleString(undefined, { maximumFractionDigits: 0 })} ops/s</dd></div>
+                  <div><dt>Execution duration</dt><dd>{formatLatency(result.caffeineBaseline.durationNanos)}</dd></div>
+                  <div><dt>p50 / p95 / p99 latency</dt><dd>{formatLatency(result.caffeineBaseline.p50LatencyNanos)} / {formatLatency(result.caffeineBaseline.p95LatencyNanos)} / {formatLatency(result.caffeineBaseline.p99LatencyNanos)}</dd></div>
+                </dl>
+                <small>{result.caffeineBaseline.metricNote}</small>
+              </article>
             </div>
             <section className="benchmark-advisor" aria-label="Policy advisor">
               <div className="insight-icon" aria-hidden="true">i</div>
