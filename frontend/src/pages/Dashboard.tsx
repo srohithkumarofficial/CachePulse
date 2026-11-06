@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [profiles, setProfiles] = useState<WorkloadProfile[]>([]);
   const [profilesError, setProfilesError] = useState("");
+  const [profilesLoading, setProfilesLoading] = useState(false);
   const [connection, setConnection] = useState<"checking" | "online" | "offline">("checking");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -49,14 +50,24 @@ export default function Dashboard() {
     }
   }, [capacityDirty]);
 
+  const refreshProfiles = useCallback(async () => {
+    setProfilesLoading(true);
+    setProfilesError("");
+    try {
+      setProfiles(await api.workloads());
+    } catch (requestError) {
+      setProfilesError(requestError instanceof Error ? requestError.message : "Could not load workload profiles.");
+    } finally {
+      setProfilesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
-    api.workloads().then((loaded) => { setProfiles(loaded); setProfilesError(""); }).catch((requestError: unknown) => {
-      setProfilesError(requestError instanceof Error ? requestError.message : "Could not load workload profiles.");
-    });
+    void refreshProfiles();
     const timer = window.setInterval(() => void refresh(), 3_000);
     return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, refreshProfiles]);
 
   async function perform(action: () => Promise<unknown>, success: string) {
     setBusy(true);
@@ -255,7 +266,7 @@ export default function Dashboard() {
                 <div className="section-heading"><div><p className="eyebrow">EXPERIMENT SETUP</p><h2>Healthcare workload lab</h2></div><span className="synthetic-tag">SIMULATED DATA</span></div>
                 <label className="field">Workload profile<select value={workload} onChange={(event) => setWorkload(event.target.value)} disabled={!profiles.length}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
                 {selectedProfile && <div className="profile-description"><p>{selectedProfile.description}</p><ul>{selectedProfile.behavior.map((item) => <li key={item}>{item}</li>)}</ul></div>}
-                {!profiles.length && <p className="helper-text" role={profilesError ? "alert" : undefined}>{profilesError ? `Could not load workload profiles: ${profilesError}` : "Workload profiles load from the backend."}</p>}
+                {!profiles.length && <div className="helper-text" role={profilesError ? "alert" : undefined}>{profilesError ? <>Could not load workload profiles: {profilesError} <button className="text-button" type="button" disabled={profilesLoading} onClick={() => void refreshProfiles()}>{profilesLoading ? "Retrying…" : "Retry"}</button></> : profilesLoading ? "Loading workload profiles…" : "No workload profiles are available."}</div>}
                 <div className="form-row lab-number-fields">
                   <label className="field">Cache capacity<input type="number" min="1" max="100000" value={labCapacity} onChange={(event) => setLabCapacity(Number(event.target.value))} /></label>
                   <label className="field">Requests<input type="number" min="1" max="100000" value={labRequests} onChange={(event) => setLabRequests(Number(event.target.value))} /></label>

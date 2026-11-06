@@ -149,9 +149,21 @@ async function request<T>(path: string, init?: RequestInit, apiRoot = "/api/cach
 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(body.error ?? body.status ?? `Request failed (${response.status})`);
+    const detail = body.error ?? body.message ?? body.status;
+    const message = typeof detail === "string" ? detail : detail == null ? "" : JSON.stringify(detail);
+    throw new Error(message || `Request failed (${response.status})`);
   }
   return body as T;
+}
+
+function validateWorkloads(value: WorkloadProfile[]): WorkloadProfile[] {
+  if (!Array.isArray(value) || value.some((profile) =>
+    !profile || typeof profile.id !== "string" || typeof profile.name !== "string" ||
+    typeof profile.description !== "string" || !Array.isArray(profile.behavior) ||
+    profile.behavior.some((item) => typeof item !== "string"))) {
+    throw new Error("The backend returned an invalid workload profiles response.");
+  }
+  return value;
 }
 
 function validateStats(value: Stats): Stats {
@@ -166,7 +178,7 @@ function validateStats(value: Stats): Stats {
 
 export const api = {
   stats: async () => validateStats(await request<Stats>("/stats")),
-  workloads: () => request<WorkloadProfile[]>("/workloads"),
+  workloads: async () => validateWorkloads(await request<WorkloadProfile[]>("/workloads")),
   put: (key: string, value: string, ttlSeconds?: number) =>
     request<{ key: string; value: string; status: string }>(`/${encodeURIComponent(key)}`, {
       method: "PUT",
